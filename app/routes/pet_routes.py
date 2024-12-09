@@ -1,12 +1,31 @@
 from flask import Blueprint, request, abort, make_response
 from ..db import db
 from ..models.pet import Pet
+import google.generativeai as genai
+import os
+
+genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 
 bp = Blueprint("pets", __name__, url_prefix="/pets")
 
 @bp.post("")
 def create_pet():
-    pass
+    
+    request_body = request.get_json()
+    print(request_body)
+    pet_name = generate_pet_name(request_body)
+    request_body["name"] = pet_name
+    
+    try:
+        new_pet = Pet.from_dict(request_body)
+        db.session.add(new_pet)
+        db.session.commit()
+
+        return new_pet.to_dict(), 201   
+    
+    except KeyError as e:
+        response = {"message": f"Request is missing required field {e.args[0]}"}
+        abort(make_response(response, 400))
 
 @bp.get("")
 def get_pets():
@@ -39,3 +58,10 @@ def validate_model(cls,id):
 
     response = {"message": f"{cls.__name__} {id} not found"}
     abort(make_response(response, 404))
+
+def generate_pet_name(pet):
+    model = genai.GenerativeModel("gemini-1.5-flash")
+    input_message = f"I am vet who helps my client to pick out a name for their pets. My client has a pet who is {pet.coloration} {pet.animal} with the personality {pet.personality}. Please generate a name for this pet. Please return the generated name as a string."
+    response = model.generate_content(input_message).text
+    print(response)
+    return response
